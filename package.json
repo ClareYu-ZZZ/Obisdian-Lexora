@@ -1,0 +1,13 @@
+{
+  "name": "elp-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/core",
+    "packages/obsidian"
+  ],
+  "scripts": {
+    "build": "npm run build -w @elp/obsidian",
+    "test": "npm run test -w @elp/core"
+  }
+}

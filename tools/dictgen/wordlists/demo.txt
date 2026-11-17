@@ -1,0 +1,6 @@
+# word<TAB>tags（逗号分隔）。正式词表按考试大纲整理，一词一行。
+endure	cet6,ky
+endeavor	cet6,toefl
+meticulous	toefl,gre
+pragmatic	toefl,ielts
+resilient	cet6,ielts

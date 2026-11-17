@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check (strict)
+        run: npx tsc --noEmit
+
+      - name: Core tests
+        run: node scripts/test.mjs
+
+      - name: Build plugin (production)
+        working-directory: packages/obsidian
+        run: node esbuild.config.mjs production
+
+      - name: Check manifest sync (root vs packages/obsidian)
+        run: |
+          if ! diff -q manifest.json packages/obsidian/manifest.json; then
+            echo "::error::manifest.json at repo root differs from packages/obsidian/manifest.json"
+            exit 1
+          fi
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexora-${{ github.sha }}
+          path: |
+            packages/obsidian/main.js
+            packages/obsidian/manifest.json
+            packages/obsidian/styles.css

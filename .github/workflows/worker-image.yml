@@ -1,0 +1,53 @@
+name: Worker image (ghcr)
+
+# Publishes the elp-worker Docker image to GitHub Container Registry.
+# Triggers:
+#   - tags worker-v* (e.g. worker-v1.0.0) -> that version + latest
+#   - manual run (workflow_dispatch)      -> "edge" tag
+#   - pushes to main touching services/worker/** -> "edge" tag
+
+on:
+  push:
+    tags:
+      - 'worker-v*'
+    branches: [main]
+    paths:
+      - 'services/worker/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER}/elp-worker"
+          if [[ "${GITHUB_REF}" == refs/tags/worker-v* ]]; then
+            VERSION="${GITHUB_REF_NAME#worker-v}"
+            TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
+          else
+            TAGS="${IMAGE}:edge"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/worker
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

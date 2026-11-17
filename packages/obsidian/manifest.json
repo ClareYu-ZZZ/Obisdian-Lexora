@@ -1,0 +1,9 @@
+{
+  "id": "lexora",
+  "name": "Lexora",
+  "version": "0.15.2",
+  "minAppVersion": "1.5.0",
+  "description": "Weave your notes, feeds and media into English lessons — word books, in-note highlighting, rich hover cards and FSRS-powered review.",
+  "author": "baohua",
+  "isDesktopOnly": false
+}

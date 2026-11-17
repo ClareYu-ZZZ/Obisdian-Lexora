@@ -1,0 +1,16 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.tmp/
+
+# build output (shipped via GitHub Releases, not the repo)
+packages/obsidian/main.js
+
+# personal deployment snapshot (vault-specific settings)
+deploy/
+
+# user-side secrets never enter the repo (plugin data.json, cookies, tokens)
+data.json
+cookies.txt
+*.env

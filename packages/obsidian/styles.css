@@ -212,7 +212,7 @@ body.elp-style-background .elp-word.elp-mastered {
 
 /* ============ v0.2 Lexora：popover 增强 ============ */
 .elp-popover {
-  max-width: 380px;
+  max-width: min(380px, calc(100vw - 24px));
   padding: 12px 14px;
   box-shadow: var(--shadow-l);
 }

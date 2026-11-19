@@ -74,7 +74,7 @@ export class PlayerPaneView extends ItemView {
       const wrap = inner.createDiv({ cls: 'elp-player-video' });
       wrap.createEl('iframe', {
         attr: {
-          src: `https://www.youtube.com/embed/${media.videoId}?rel=0&autoplay=1`,
+          src: `https://www.youtube.com/embed/${media.videoId}?rel=0&autoplay=1&playsinline=1`,
           frameborder: '0',
           allow: 'autoplay; encrypted-media; picture-in-picture',
           allowfullscreen: 'true',

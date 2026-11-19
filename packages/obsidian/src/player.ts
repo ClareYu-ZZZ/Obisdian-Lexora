@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, TFile, normalizePath, setIcon } from 'obsidian';
+import { MarkdownView, Notice, Platform, TFile, normalizePath, setIcon } from 'obsidian';
 import type { LessonData } from '@elp/core';
 import { fmtTime, paraRanges } from '@elp/core';
 import type ElpPlugin from './main';
@@ -71,7 +71,7 @@ export function registerPlayer(plugin: ElpPlugin): void {
     const base = normalizePath(plugin.settings.lessonsFolder) + '/';
     if (!ctx.sourcePath.startsWith(base)) return;
     const embeds = el.querySelectorAll<HTMLElement>(
-      'span.internal-embed[src^="clips/"][src$=".mp3"], span.internal-embed[src^="recordings/"][src$=".webm"]',
+      'span.internal-embed[src^="clips/"][src$=".mp3"], span.internal-embed[src^="recordings/"][src$=".webm"], span.internal-embed[src^="recordings/"][src$=".m4a"]',
     );
     for (const emb of Array.from(embeds)) {
       const src = emb.getAttribute('src');
@@ -243,8 +243,31 @@ export class PlayerController {
     return this.mdPath.split('/').slice(0, -1).join('/');
   }
 
-  private recPath(idx: number): string {
-    return `${this.lessonDir}/recordings/seg-${idx}.webm`;
+  /** 录音容器协商：桌面 Chrome/Electron 产 webm/opus，iOS WKWebView 只支持 mp4/AAC。 */
+  private static recTypes = [
+    { mime: 'audio/webm', ext: 'webm' },
+    { mime: 'audio/mp4', ext: 'm4a' },
+  ];
+
+  private static pickRecType(): { mime?: string; ext: string } {
+    const MR: typeof MediaRecorder | undefined = (window as never as { MediaRecorder?: typeof MediaRecorder }).MediaRecorder;
+    if (MR?.isTypeSupported) {
+      for (const t of PlayerController.recTypes) if (MR.isTypeSupported(t.mime)) return t;
+    }
+    return { mime: undefined, ext: 'webm' };
+  }
+
+  private recPath(idx: number, ext = 'webm'): string {
+    return `${this.lessonDir}/recordings/seg-${idx}.${ext}`;
+  }
+
+  /** 找这句已存在的录音（跨设备可能是 webm 或 m4a）。 */
+  private async recFile(idx: number): Promise<{ path: string; mime: string } | null> {
+    for (const t of PlayerController.recTypes) {
+      const path = this.recPath(idx, t.ext);
+      if (await this.plugin.storage.exists(path)) return { path, mime: t.mime };
+    }
+    return null;
   }
 
   // ---------- media backends ----------
@@ -320,7 +343,9 @@ export class PlayerController {
         return { kind: 'local', el };
       }
       const wrap = root.createDiv({ cls: 'elp-player-video' });
-      const el = wrap.createEl('video', { attr: { preload: 'metadata' } });
+      const el = wrap.createEl('video', {
+        attr: { preload: 'metadata', playsinline: 'true', 'webkit-playsinline': 'true' },
+      });
       el.src = src;
       return { kind: 'local', el };
     }
@@ -482,7 +507,7 @@ export class PlayerController {
 
   private async refreshMineBtn(): Promise<void> {
     if (!this.mineBtn) return;
-    const has = this.current >= 0 && await this.plugin.storage.exists(this.recPath(this.current));
+    const has = this.current >= 0 && (await this.recFile(this.current)) !== null;
     this.mineBtn.toggleClass('is-hidden', !has);
   }
 
@@ -662,15 +687,21 @@ export class PlayerController {
       }
       this.recStream = stream;
       const chunks: BlobPart[] = [];
-      const rec = new MediaRecorder(stream);
+      const picked = PlayerController.pickRecType();
+      const rec = picked.mime ? new MediaRecorder(stream, { mimeType: picked.mime }) : new MediaRecorder(stream);
       const segIdx = this.current;
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = () => {
         void (async () => {
           this.stopRecorderTracks();
-          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const actualMime = rec.mimeType || picked.mime || 'audio/webm';
+          const ext = actualMime.includes('mp4') ? 'm4a' : 'webm';
+          const blob = new Blob(chunks, { type: actualMime });
           if (blob.size < 200) { new Notice('录音太短'); return; }
-          await this.plugin.storage.writeBinary(this.recPath(segIdx), await blob.arrayBuffer());
+          for (const t of PlayerController.recTypes) {
+            if (t.ext !== ext) await this.plugin.storage.remove(this.recPath(segIdx, t.ext));
+          }
+          await this.plugin.storage.writeBinary(this.recPath(segIdx, ext), await blob.arrayBuffer());
           new Notice('录音已保存，自动回放对比');
           await this.refreshMineBtn();
           await this.playMine();
@@ -684,7 +715,9 @@ export class PlayerController {
       this.stopRecorderTracks();
       new Notice(
         `无法录音：${(e as Error).message}\n` +
-        'Obsidian 还没拿到 macOS 麦克风授权。修复：设置→核心插件→启用「录音机」并开始一次录音触发系统弹窗 → 允许 → 重启 Obsidian。',
+        (Platform.isMobileApp
+          ? '请在系统设置中允许 Obsidian 使用麦克风后重试。'
+          : 'Obsidian 还没拿到 macOS 麦克风授权。修复：设置→核心插件→启用「录音机」并开始一次录音触发系统弹窗 → 允许 → 重启 Obsidian。'),
         12000,
       );
     }
@@ -692,11 +725,12 @@ export class PlayerController {
 
   private async playMine(): Promise<void> {
     if (this.current < 0) return;
-    const buf = await this.plugin.storage.readBinary(this.recPath(this.current));
-    if (!buf) { new Notice('这句还没有录音'); return; }
+    const rec = await this.recFile(this.current);
+    const buf = rec ? await this.plugin.storage.readBinary(rec.path) : null;
+    if (!rec || !buf) { new Notice('这句还没有录音'); return; }
     this.pause();
     this.mineAudio?.pause();
-    const url = URL.createObjectURL(new Blob([buf], { type: 'audio/webm' }));
+    const url = URL.createObjectURL(new Blob([buf], { type: rec.mime }));
     this.mineAudio = new Audio(url);
     this.mineAudio.onended = () => URL.revokeObjectURL(url);
     void this.mineAudio.play();

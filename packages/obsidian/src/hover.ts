@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import type ElpPlugin from './main';
 import { pronounce } from './audio';
 import { lookupOnline } from './online-dict';
@@ -32,6 +33,16 @@ export class HoverManager {
     });
     this.plugin.registerDomEvent(document, 'mousedown', (ev) => {
       if (!(ev.target as HTMLElement | null)?.closest?.('.elp-popover')) this.hide();
+    });
+    // 触屏：mouseover 只在首次 tap 合成且不可靠，补 click 直达路径
+    this.plugin.registerDomEvent(document, 'click', (ev) => {
+      if (!Platform.isMobileApp) return;
+      const wordEl = (ev.target as HTMLElement | null)?.closest?.('.elp-word') as HTMLElement | null;
+      const lemma = wordEl?.getAttribute('data-elp-lemma');
+      if (wordEl && lemma) {
+        this.cancelHide();
+        this.show(lemma, wordEl);
+      }
     });
   }
 

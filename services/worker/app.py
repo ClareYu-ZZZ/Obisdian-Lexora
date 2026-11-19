@@ -40,6 +40,28 @@ TOKEN = os.environ.get("LEXORA_TOKEN") or secrets.token_urlsafe(24)
 if not os.environ.get("LEXORA_TOKEN"):
     print(f"[elp-worker] generated token (set LEXORA_TOKEN to pin it): {TOKEN}", flush=True)
 
+# 共享模式：LEXORA_GUEST_TOKENS=tok1,tok2 为访客发放次级 token。
+# 访客：不可用 YouTube 端点（yt-dlp + 站长 cookies 属个人资产，也是商用红线），
+# 且按日限流。计数在内存、按 UTC 日重置；重启清零（beta 可接受）。
+GUEST_TOKENS = {t.strip() for t in os.environ.get("LEXORA_GUEST_TOKENS", "").split(",") if t.strip()}
+GUEST_DAILY_JOBS = int(os.environ.get("LEXORA_GUEST_DAILY_JOBS", "10"))
+GUEST_DAILY_TTS = int(os.environ.get("LEXORA_GUEST_DAILY_TTS", "300"))
+_GUEST_USE: dict = {}
+_GUEST_USE_LOCK = threading.Lock()
+
+
+def _guest_take(token: str, kind: str, limit: int) -> None:
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    with _GUEST_USE_LOCK:
+        rec = _GUEST_USE.setdefault(token, {})
+        if rec.get("day") != day:
+            rec.clear()
+            rec["day"] = day
+        n = rec.get(kind, 0)
+        if n >= limit:
+            raise HTTPException(status_code=429, detail=f"今日{kind}配额已用完（{limit}/天），明天再来")
+        rec[kind] = n + 1
+
 # 配对：启动后一段时间内，持 6 位配对码可换取 token（替代手抄 token）。
 # 窗口过后端点关闭；重启容器即获得新配对码。LEXORA_PAIRING_WINDOW=0 可禁用。
 PAIR_WINDOW = int(os.environ.get("LEXORA_PAIRING_WINDOW", "900"))
@@ -61,13 +83,18 @@ app = FastAPI(title="elp-worker", version=API_VERSION)
 
 # ---------------------------------------------------------------- auth
 
-def require_auth(request: Request) -> None:
+def require_auth(request: Request) -> str:
+    """鉴权并返回角色：admin（站长/本机）或访客自己的 token。"""
     host = request.client.host if request.client else ""
     if host in ("127.0.0.1", "::1", "localhost"):
-        return
+        return "admin"
     header = request.headers.get("authorization", "")
-    if header != f"Bearer {TOKEN}":
-        raise HTTPException(status_code=401, detail="missing or invalid bearer token")
+    if header == f"Bearer {TOKEN}":
+        return "admin"
+    guest = header.removeprefix("Bearer ").strip()
+    if guest and guest in GUEST_TOKENS:
+        return guest
+    raise HTTPException(status_code=401, detail="missing or invalid bearer token")
 
 
 @app.post("/v1/pair")
@@ -338,8 +365,8 @@ def _has_ytdlp() -> bool:
 
 # ---------------------------------------------------------------- endpoints
 
-@app.get("/v1/capabilities", dependencies=[Depends(require_auth)])
-def capabilities() -> JSONResponse:
+@app.get("/v1/capabilities")
+def capabilities(caller: str = Depends(require_auth)) -> JSONResponse:
     has_whisper = FAKE
     if not FAKE:
         try:
@@ -354,9 +381,9 @@ def capabilities() -> JSONResponse:
             "transcribe": has_whisper,
             "tts": _has_piper(),
             "clip": shutil.which("ffmpeg") is not None,
-            "subtitle": FAKE or _has_ytdlp(),
-            "ytaudio": (FAKE or _has_ytdlp()) and shutil.which("ffmpeg") is not None,
-            "cookies": COOKIES_FILE.exists(),
+            "subtitle": (FAKE or _has_ytdlp()) and caller == "admin",
+            "ytaudio": (FAKE or _has_ytdlp()) and shutil.which("ffmpeg") is not None and caller == "admin",
+            "cookies": COOKIES_FILE.exists() and caller == "admin",
         },
         "models": {"whisper": WHISPER_MODEL, "compute": WHISPER_COMPUTE, "piper": PIPER_VOICE},
         "voices": _available_voices() or ([PIPER_VOICE] if FAKE else []),
@@ -364,12 +391,15 @@ def capabilities() -> JSONResponse:
     })
 
 
-@app.post("/v1/jobs", dependencies=[Depends(require_auth)])
+@app.post("/v1/jobs")
 async def create_job(
     type: str = Form(...),
     file: UploadFile = File(...),
     options: str = Form("{}"),
+    caller: str = Depends(require_auth),
 ) -> JSONResponse:
+    if caller != "admin":
+        _guest_take(caller, "转写/切片", GUEST_DAILY_JOBS)
     if type not in ("transcribe", "clip"):
         raise HTTPException(status_code=400, detail=f"unsupported job type: {type}")
     opts = json.loads(options or "{}")
@@ -438,9 +468,11 @@ class YtAudioRequest(BaseModel):
     video: bool = False
 
 
-@app.post("/v1/ytaudio", dependencies=[Depends(require_auth)])
-def ytaudio(req: YtAudioRequest) -> JSONResponse:
+@app.post("/v1/ytaudio")
+def ytaudio(req: YtAudioRequest, caller: str = Depends(require_auth)) -> JSONResponse:
     """异步任务：下载 YouTube 音轨为 mp3（结果走 /v1/jobs/{id}/result）。"""
+    if caller != "admin":
+        raise HTTPException(status_code=403, detail="共享服务未开放 YouTube 功能，请自托管 worker")
     vid = req.video_id.strip()
     if not vid or len(vid) > 20:
         raise HTTPException(status_code=400, detail="bad video_id")
@@ -461,9 +493,11 @@ class SubtitleRequest(BaseModel):
     lang: str = "en"
 
 
-@app.post("/v1/subtitle", dependencies=[Depends(require_auth)])
-def subtitle(req: SubtitleRequest) -> JSONResponse:
+@app.post("/v1/subtitle")
+def subtitle(req: SubtitleRequest, caller: str = Depends(require_auth)) -> JSONResponse:
     """只拉 YouTube 字幕（不下载音视频）：人工字幕优先，ASR 自动字幕兜底。"""
+    if caller != "admin":
+        raise HTTPException(status_code=403, detail="共享服务未开放 YouTube 功能，请自托管 worker")
     vid = req.video_id.strip()
     if not vid or len(vid) > 20:
         raise HTTPException(status_code=400, detail="bad video_id")
@@ -549,8 +583,10 @@ def _pad_wav(data: bytes, lead: float = 0.12, tail: float = 0.18) -> bytes:
         return data
 
 
-@app.post("/v1/tts", dependencies=[Depends(require_auth)])
-def tts(req: TtsRequest) -> Response:
+@app.post("/v1/tts")
+def tts(req: TtsRequest, caller: str = Depends(require_auth)) -> Response:
+    if caller != "admin":
+        _guest_take(caller, "TTS", GUEST_DAILY_TTS)
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="empty text")

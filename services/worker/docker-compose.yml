@@ -18,8 +18,12 @@ services:
       # - LEXORA_TOKEN=change-me
       # 转写模型大小：tiny/base/small/medium（默认 small）
       # - LEXORA_WHISPER_MODEL=small
-      # 禁用配对端点（0 = 关闭；默认 900 秒窗口）
+      # 禁用配对端点（0 = 关闭；默认 900 秒窗口。公网共享部署务必设 0）
       # - LEXORA_PAIRING_WINDOW=900
+      # 共享模式：给访客发次级 token（逗号分隔）。访客无 YouTube 功能、按日限流
+      # - LEXORA_GUEST_TOKENS=guest-tok-1,guest-tok-2
+      # - LEXORA_GUEST_DAILY_JOBS=10
+      # - LEXORA_GUEST_DAILY_TTS=300
     volumes:
       # faster-whisper 模型缓存持久化，避免每次重建重新下载
       - elp-worker-cache:/root/.cache

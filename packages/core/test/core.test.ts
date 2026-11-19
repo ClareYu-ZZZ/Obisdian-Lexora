@@ -4,6 +4,7 @@ import {
   buildDictIndex, EcdictDictionary, parseCsvRecords, parseExchange, suffixCandidates,
   BookStore, HighlightIndex, scan, newFsrsState, rate, isDue,
   encodeLicense, verifyLicenseKey, computeLicenseState, hasPro, isProReviewMode, b64urlEncode,
+  monthKey, normalizeLessonUsage, lessonQuotaLimit,
   type StorageAdapter, type WordEntry,
 } from '../src/index';
 
@@ -525,13 +526,18 @@ test('license: key round-trip, tamper detection, expiry', async () => {
     return edVerify(null, Buffer.from(msg), createPublicKey({ key: spki, format: 'der', type: 'spki' }), Buffer.from(sig));
   };
 
-  const payload = { v: 1 as const, plan: 'pro' as const, email: 'a@b.c', iat: 1700000000000 };
+  const payload = { v: 1 as const, plan: 'pro' as const, email: 'a@b.c', iat: 1700000000000, exp: 1900000000000 };
   const sig = new Uint8Array(edSign(null, Buffer.from(JSON.stringify(payload), 'utf8'), privateKey));
   const key = encodeLicense(payload, sig);
   assert.ok(key.startsWith('LEXORA1.'));
 
-  const ok = await verifyLicenseKey(key, rawPub, verifyFn);
+  const ok = await verifyLicenseKey(key, rawPub, verifyFn, 1750000000000);
   assert.equal(ok.email, 'a@b.c');
+
+  // subscription-only: a key without exp must be rejected even if correctly signed
+  const noExp = { v: 1 as const, plan: 'pro' as const, email: 'a@b.c', iat: 1700000000000 } as never;
+  const sigNoExp = new Uint8Array(edSign(null, Buffer.from(JSON.stringify(noExp), 'utf8'), privateKey));
+  await assert.rejects(() => verifyLicenseKey(encodeLicense(noExp, sigNoExp), rawPub, verifyFn), /订阅制/);
 
   // tampered payload must fail
   const parts = key.split('.');
@@ -540,6 +546,7 @@ test('license: key round-trip, tamper detection, expiry', async () => {
 
   // expired key must fail
   const payloadExp = { ...payload, exp: 1700000001000 };
+  // (expired well before the 'now' passed below)
   const sigExp = new Uint8Array(edSign(null, Buffer.from(JSON.stringify(payloadExp), 'utf8'), privateKey));
   await assert.rejects(
     () => verifyLicenseKey(encodeLicense(payloadExp, sigExp), rawPub, verifyFn, 1800000000000),
@@ -551,7 +558,7 @@ test('license: trial state machine and review-mode gating', () => {
   const day = 86400_000;
   const t0 = 1700000000000;
   assert.equal(computeLicenseState({ verified: null }).tier, 'free');
-  const pro = computeLicenseState({ verified: { v: 1, plan: 'pro', email: 'a@b.c', iat: t0 } });
+  const pro = computeLicenseState({ verified: { v: 1, plan: 'pro', email: 'a@b.c', iat: t0, exp: t0 + 365 * day } });
   assert.ok(hasPro(pro));
   const trial = computeLicenseState({ verified: null, trialStartedAt: t0, now: t0 + 3 * day });
   assert.equal(trial.tier, 'trial');
@@ -564,4 +571,20 @@ test('license: trial state machine and review-mode gating', () => {
   assert.equal(withErr.keyError, 'bad');
   assert.ok(isProReviewMode('listening') && isProReviewMode('cloze-spell'));
   assert.ok(!isProReviewMode('card') && !isProReviewMode('spelling'));
+});
+
+
+test('license: monthly lesson quota', () => {
+  const nov = new Date(2026, 10, 18);
+  const dec = new Date(2026, 11, 2);
+  assert.equal(monthKey(nov), '2026-11');
+  const fresh = normalizeLessonUsage(undefined, nov);
+  assert.deepEqual(fresh, { month: '2026-11', used: 0 });
+  const kept = normalizeLessonUsage({ month: '2026-11', used: 3 }, nov);
+  assert.equal(kept.used, 3);
+  const rolled = normalizeLessonUsage({ month: '2026-11', used: 5 }, dec);
+  assert.deepEqual(rolled, { month: '2026-12', used: 0 });
+  assert.equal(lessonQuotaLimit({ tier: 'free' }), 5);
+  assert.equal(lessonQuotaLimit({ tier: 'trial' }), 20);
+  assert.equal(lessonQuotaLimit({ tier: 'pro' }), 20);
 });

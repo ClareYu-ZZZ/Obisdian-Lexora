@@ -22,8 +22,8 @@ export interface LicensePayload {
   email: string;
   /** Issue time, unix ms. */
   iat: number;
-  /** Optional expiry, unix ms (subscriptions); absent = perpetual. */
-  exp?: number;
+  /** Expiry, unix ms. Pro is subscription-only: every key MUST carry one. */
+  exp: number;
 }
 
 export type LicenseTier = 'free' | 'trial' | 'pro';
@@ -118,6 +118,9 @@ export function parseLicenseKey(key: string): { payload: LicensePayload; message
   if (payload.v !== 1 || payload.plan !== 'pro' || typeof payload.email !== 'string') {
     throw new Error('key 字段不完整');
   }
+  if (typeof payload.exp !== 'number') {
+    throw new Error('key 缺少有效期（Lexora Pro 为订阅制）');
+  }
   return { payload, message, signature };
 }
 
@@ -130,7 +133,7 @@ export async function verifyLicenseKey(
   const { payload, message, signature } = parseLicenseKey(key);
   const ok = await verify(message, signature, publicKey);
   if (!ok) throw new Error('key 签名无效');
-  if (payload.exp !== undefined && now > payload.exp) throw new Error('key 已过期');
+  if (now > payload.exp) throw new Error('key 已过期');
   return payload;
 }
 
@@ -170,4 +173,29 @@ export function hasPro(state: LicenseState): boolean {
 /** Build the exact bytes licgen signs — kept here so tool and app can't drift. */
 export function encodeLicense(payload: LicensePayload, signature: Uint8Array): string {
   return `${LICENSE_PREFIX}.${b64urlEncode(utf8(JSON.stringify(payload)))}.${b64urlEncode(signature)}`;
+}
+
+/* ---------------- monthly lesson-generation quota ---------------- */
+
+/** Lessons (from audio/video/text) each tier may generate per calendar month. */
+export const LESSON_QUOTA: Record<'free' | 'pro', number> = { free: 5, pro: 20 };
+
+export function lessonQuotaLimit(state: LicenseState): number {
+  return hasPro(state) ? LESSON_QUOTA.pro : LESSON_QUOTA.free;
+}
+
+export interface LessonUsage {
+  /** Local calendar month, e.g. "2026-11". */
+  month: string;
+  used: number;
+}
+
+export function monthKey(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Roll the counter over on month change; tolerate missing/old data. */
+export function normalizeLessonUsage(u: LessonUsage | undefined, now: Date = new Date()): LessonUsage {
+  const month = monthKey(now);
+  return u && u.month === month ? u : { month, used: 0 };
 }

@@ -99,6 +99,7 @@ async function finish(
 ): Promise<string> {
   await makeClips(plugin, data);
   const path = await writeLesson(plugin, data);
+  await plugin.license.consumeLessonQuota();
   if (itemId) await plugin.feeds.markGenerated(itemId, path);
   new Notice(`教程已生成：生词 ${data.words.length} · 长难句 ${data.hard.length}`);
   await openLesson(plugin, path);
@@ -121,6 +122,7 @@ export async function generateFromYoutubeAudio(
     itemId?: string;
   },
 ): Promise<void> {
+  if (!plugin.license.checkLessonQuota()) return;
   if (!plugin.license.ensurePro('worker-advanced')) return;
   const notice = new Notice('下载视频…', 0);
   try {
@@ -199,6 +201,7 @@ export async function generateFromArticle(
     audioUrl?: string;
   },
 ): Promise<void> {
+  if (!plugin.license.checkLessonQuota()) return;
   const notice = new Notice('正在抓取与解析文章…', 0);
   try {
     let text = '';
@@ -241,6 +244,7 @@ export async function generateArticleOriginal(
   plugin: ElpPlugin,
   args: { title: string; url?: string; audioUrl: string; feedName?: string; itemId?: string },
 ): Promise<void> {
+  if (!plugin.license.checkLessonQuota()) return;
   if (!plugin.license.ensurePro('worker-advanced')) return;
   const notice = new Notice('下载原声音频…', 0);
   try {
@@ -292,6 +296,7 @@ export async function generateFromMedia(
     itemId?: string;
   },
 ): Promise<void> {
+  if (!plugin.license.checkLessonQuota()) return;
   const notice = new Notice('正在解析字幕…', 0);
   try {
     const raw = args.subtitleText ?? (args.subtitleFile ? await plugin.app.vault.cachedRead(args.subtitleFile) : '');
@@ -321,6 +326,7 @@ export async function generateFromMedia(
 
 /** 当前笔记正文 → 教程（本地文档路径）。 */
 export async function generateFromNote(plugin: ElpPlugin, file: TFile): Promise<void> {
+  if (!plugin.license.checkLessonQuota()) return;
   const raw = await plugin.app.vault.cachedRead(file);
   const text = raw
     .replace(/^---\n[\s\S]*?\n---\n/, '')

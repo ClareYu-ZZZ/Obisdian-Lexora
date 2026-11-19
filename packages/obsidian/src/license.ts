@@ -7,6 +7,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha512';
 import {
   computeLicenseState, hasPro, verifyLicenseKey,
+  lessonQuotaLimit, normalizeLessonUsage,
   PRO_FEATURE_LABELS, TRIAL_DAYS,
   type LicensePayload, type LicenseState, type ProFeature,
 } from '@elp/core';
@@ -82,12 +83,36 @@ export class LicenseManager {
     return false;
   }
 
+  /** Monthly lesson-generation quota: gate at entry, count at success. */
+  checkLessonQuota(): boolean {
+    const usage = normalizeLessonUsage(this.plugin.settings.lessonUsage);
+    const limit = lessonQuotaLimit(this.tick());
+    if (usage.used >= limit) {
+      const upsell = this.pro ? '' : '升级 Lexora Pro 可提升至每月 20 个。';
+      new Notice(`本月教程生成额度已用完（${usage.used}/${limit}）。额度每月 1 日重置。${upsell}`, 8000);
+      return false;
+    }
+    return true;
+  }
+
+  /** Call once per successfully generated lesson. */
+  async consumeLessonQuota(): Promise<void> {
+    const usage = normalizeLessonUsage(this.plugin.settings.lessonUsage);
+    usage.used += 1;
+    this.plugin.settings.lessonUsage = usage;
+    await this.plugin.saveSettings();
+  }
+
+  quotaText(): string {
+    const usage = normalizeLessonUsage(this.plugin.settings.lessonUsage);
+    return `本月教程生成：${usage.used}/${lessonQuotaLimit(this.tick())}`;
+  }
+
   /** One-line status for the settings page. */
   statusText(): string {
     const st = this.tick();
     if (st.tier === 'pro') {
-      const exp = st.payload?.exp ? `，有效期至 ${new Date(st.payload.exp).toLocaleDateString()}` : '（永久）';
-      return `Pro 已激活：${st.payload?.email ?? ''}${exp}`;
+      return `Pro 已激活：${st.payload?.email ?? ''}，有效期至 ${new Date(st.payload!.exp).toLocaleDateString()}`;
     }
     if (st.tier === 'trial') return `Pro 试用中：剩余 ${st.trialDaysLeft} 天`;
     if (st.keyError) return `Key 无效：${st.keyError}`;

@@ -59,9 +59,10 @@ Auth: loopback requests are unauthenticated; any non-loopback request requires `
 
 All code in this repository is MIT-licensed and the free tier works forever: subscriptions, lesson generation from articles and subtitles, word books, highlighting, hover cards, the bundled self-built dictionary, Eudic sync, and the four basic review modes.
 
-**Lexora Pro** (one license key, offline Ed25519 verification, no account, no phone-home) unlocks:
+**Lexora Pro** (monthly or yearly subscription — every license key carries an expiry; offline Ed25519 verification, no account, no phone-home) unlocks:
 - Worker heavy-compute features: ASR transcription, media clipping, YouTube download
 - Advanced review modes: listening, dictation, cloze spelling
+- A higher lesson-generation quota: 20 lessons per month (free tier: 5 per month)
 
 Every Pro feature starts a one-time 14-day full-feature trial on first use. The proprietary dictionary data pipeline output (`tools/dictgen/raw`, `out`) is a separate commercial data asset and is not part of this repository or its MIT grant.
 

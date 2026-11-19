@@ -51,6 +51,8 @@ export interface ElpSettings {
   licenseKey: string;
   /** Unix ms when the 14-day trial started; absent = not started. */
   trialStartedAt?: number;
+  /** Monthly lesson-generation counter. */
+  lessonUsage?: { month: string; used: number };
 }
 
 export const DEFAULT_SETTINGS: ElpSettings = {
@@ -126,14 +128,14 @@ export class ElpSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Lexora Pro').setHeading();
     const licStatus = new Setting(containerEl)
       .setName('状态')
-      .setDesc(this.plugin.license.statusText());
+      .setDesc(`${this.plugin.license.statusText()} · ${this.plugin.license.quotaText()}`);
     licStatus.addButton((b) => b.setButtonText('刷新').onClick(async () => {
       await this.plugin.license.refresh();
       this.display();
     }));
     new Setting(containerEl)
       .setName('License key')
-      .setDesc('购买后收到的 LEXORA1.… key。免费版永久可用；Pro 解锁 worker 高级功能与高级复习模式。')
+      .setDesc('购买后收到的 LEXORA1.… key（按月/按年订阅）。免费版永久可用；Pro 解锁 worker 高级功能、高级复习模式，教程生成额度 5→20 个/月。')
       .addText((t) => {
         t.setPlaceholder('LEXORA1.…')
           .setValue(this.plugin.settings.licenseKey)

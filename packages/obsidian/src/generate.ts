@@ -62,6 +62,7 @@ async function makeClips(plugin: ElpPlugin, data: LessonData): Promise<void> {
   }
   if (segs.length === 0) return;
 
+  if (!plugin.license.ensurePro('worker-advanced')) return; // 无 Pro 时教程仍生成，只是没有切片
   const notice = new Notice('生成原声切片…', 0);
   try {
     const zipBytes = await plugin.worker.clipJob(mediaFile, segs, (status, progress) => {
@@ -120,6 +121,7 @@ export async function generateFromYoutubeAudio(
     itemId?: string;
   },
 ): Promise<void> {
+  if (!plugin.license.ensurePro('worker-advanced')) return;
   const notice = new Notice('下载视频…', 0);
   try {
     // 先要 720p 视频（同旧套件）；视频流拿不到再退音轨
@@ -239,6 +241,7 @@ export async function generateArticleOriginal(
   plugin: ElpPlugin,
   args: { title: string; url?: string; audioUrl: string; feedName?: string; itemId?: string },
 ): Promise<void> {
+  if (!plugin.license.ensurePro('worker-advanced')) return;
   const notice = new Notice('下载原声音频…', 0);
   try {
     const folder = normalizePath(`${plugin.settings.lessonsFolder}/${lessonFolderName(args.title)}`);

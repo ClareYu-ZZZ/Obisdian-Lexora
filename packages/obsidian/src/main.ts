@@ -1,3 +1,4 @@
+import { LicenseManager } from './license';
 import { MarkdownView, Notice, Plugin, WorkspaceLeaf, addIcon } from 'obsidian';
 import type { EditorView } from '@codemirror/view';
 import {
@@ -24,6 +25,7 @@ import { importCanvas, importKnownWords } from './importers';
 
 export default class ElpPlugin extends Plugin {
   settings: ElpSettings = { ...DEFAULT_SETTINGS };
+  license!: LicenseManager;
   storage!: VaultStorage;
   store!: BookStore;
   dict!: EcdictDictionary;
@@ -45,6 +47,8 @@ export default class ElpPlugin extends Plugin {
     </g>`);
 
     await this.loadSettings();
+    this.license = new LicenseManager(this);
+    void this.license.refresh();
     this.storage = new VaultStorage(this.app.vault);
     this.store = new BookStore(this.storage, booksFolder(this.settings));
     this.dict = new EcdictDictionary(this.storage, dictCacheFolder(this.settings));

@@ -17,3 +17,4 @@ export * from './feeds';
 export * from './subtitles';
 export * from './miner';
 export * from './lesson';
+export * from './license';

@@ -1,5 +1,5 @@
 import { App, Modal, Setting } from 'obsidian';
-import { REVIEW_MODE_LABELS, SCHEDULER_LABELS, type ReviewMode, type SchedulerAlgo, type WordBook } from '@elp/core';
+import { REVIEW_MODE_LABELS, SCHEDULER_LABELS, type ReviewMode, type SchedulerAlgo, type WordBook, isProReviewMode } from '@elp/core';
 import type ElpPlugin from './main';
 
 /** Per-book review settings (mirrors the design doc's 复习设置页). */
@@ -38,9 +38,10 @@ export class ReviewConfigModal extends Modal {
     for (const mode of modes) {
       const btn = modeWrap.createEl('button', {
         cls: 'elp-mode-chip' + (cfg.modes.includes(mode) ? ' is-active' : ''),
-        text: REVIEW_MODE_LABELS[mode],
+        text: REVIEW_MODE_LABELS[mode] + (isProReviewMode(mode) ? ' ⭐' : ''),
       });
       btn.onclick = () => {
+        if (isProReviewMode(mode) && !cfg.modes.includes(mode) && !this.plugin.license.ensurePro('review-advanced')) return;
         const set = new Set(cfg.modes);
         if (set.has(mode)) set.delete(mode); else set.add(mode);
         if (set.size === 0) set.add('card');

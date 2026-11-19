@@ -55,6 +55,16 @@ Auth: loopback requests are unauthenticated; any non-loopback request requires `
 - **Plugin**: tag the exact manifest version (no `v` prefix): `git tag 0.15.3 && git push origin 0.15.3`. CI builds and attaches `main.js` / `manifest.json` / `styles.css` to the GitHub Release. Tags containing `-` (e.g. `0.16.0-beta.1`) are marked pre-release (BRAT beta). Keep root `manifest.json`, `packages/obsidian/manifest.json` and `versions.json` in sync when bumping.
 - **Worker**: tag `worker-v<semver>` to publish `ghcr.io/clareyu-zzz/elp-worker:<semver>` + `latest`; pushes to `main` touching `services/worker/**` publish `:edge`.
 
+## Pricing model (open core)
+
+All code in this repository is MIT-licensed and the free tier works forever: subscriptions, lesson generation from articles and subtitles, word books, highlighting, hover cards, the bundled self-built dictionary, Eudic sync, and the four basic review modes.
+
+**Lexora Pro** (one license key, offline Ed25519 verification, no account, no phone-home) unlocks:
+- Worker heavy-compute features: ASR transcription, media clipping, YouTube download
+- Advanced review modes: listening, dictation, cloze spelling
+
+Every Pro feature starts a one-time 14-day full-feature trial on first use. The proprietary dictionary data pipeline output (`tools/dictgen/raw`, `out`) is a separate commercial data asset and is not part of this repository or its MIT grant.
+
 ## License
 
-License terms for the open-core split are being finalized and will be added before public release.
+MIT — see [LICENSE](LICENSE).

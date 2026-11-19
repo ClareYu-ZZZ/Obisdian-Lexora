@@ -19,3 +19,4 @@ cookies.txt
 tools/dictgen/raw/
 tools/dictgen/out/
 tools/dictgen/.venv/
+licgen-keys/

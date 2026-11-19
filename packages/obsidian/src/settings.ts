@@ -47,6 +47,10 @@ export interface ElpSettings {
   eudicAutoSync: boolean;
   /** 词汇量测试历史 */
   vocabTests: Array<{ date: string; estimate: number }>;
+  /** ---- Lexora Pro ---- */
+  licenseKey: string;
+  /** Unix ms when the 14-day trial started; absent = not started. */
+  trialStartedAt?: number;
 }
 
 export const DEFAULT_SETTINGS: ElpSettings = {
@@ -79,6 +83,7 @@ export const DEFAULT_SETTINGS: ElpSettings = {
   eudicCategoryName: '',
   eudicAutoSync: false,
   vocabTests: [],
+  licenseKey: '',
 };
 
 export function mineLevelsOf(s: ElpSettings): string[] {
@@ -117,6 +122,30 @@ export class ElpSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+
+    new Setting(containerEl).setName('Lexora Pro').setHeading();
+    const licStatus = new Setting(containerEl)
+      .setName('状态')
+      .setDesc(this.plugin.license.statusText());
+    licStatus.addButton((b) => b.setButtonText('刷新').onClick(async () => {
+      await this.plugin.license.refresh();
+      this.display();
+    }));
+    new Setting(containerEl)
+      .setName('License key')
+      .setDesc('购买后收到的 LEXORA1.… key。免费版永久可用；Pro 解锁 worker 高级功能与高级复习模式。')
+      .addText((t) => {
+        t.setPlaceholder('LEXORA1.…')
+          .setValue(this.plugin.settings.licenseKey)
+          .onChange((v) => { this.plugin.settings.licenseKey = v.trim(); });
+        t.inputEl.style.width = '100%';
+      })
+      .addButton((b) => b.setButtonText('应用').setCta().onClick(async () => {
+        await this.plugin.saveSettings();
+        const st = await this.plugin.license.refresh();
+        new Notice(st.tier === 'pro' ? 'Pro 已激活 ✓' : (st.keyError ?? '未激活'));
+        this.display();
+      }));
 
     new Setting(containerEl).setName('词典').setHeading();
 

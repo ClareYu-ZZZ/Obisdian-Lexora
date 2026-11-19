@@ -82,6 +82,7 @@ class SubtitleSourceModal extends Modal {
   }
 
   private async transcribe(): Promise<void> {
+    if (!this.plugin.license.ensurePro('worker-advanced')) return;
     this.close();
     const notice = new Notice('上传媒体并转写中…', 0);
     try {

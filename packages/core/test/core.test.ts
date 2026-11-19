@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildDictIndex, EcdictDictionary, parseCsvRecords, parseExchange, suffixCandidates,
   BookStore, HighlightIndex, scan, newFsrsState, rate, isDue,
+  encodeLicense, verifyLicenseKey, computeLicenseState, hasPro, isProReviewMode, b64urlEncode,
   type StorageAdapter, type WordEntry,
 } from '../src/index';
 
@@ -511,4 +512,56 @@ sentence like this.
   // 句子起点对齐到第一个词（1.0s），而不是被重复文本撑后
   assert.ok((segs[0].start ?? 99) <= 1.01, `start=${segs[0].start}`);
   assert.ok((segs[0].end ?? 0) >= 4.9, `end=${segs[0].end}`);
+});
+
+/* ---------------- license ---------------- */
+
+test('license: key round-trip, tamper detection, expiry', async () => {
+  const { generateKeyPairSync, sign: edSign, verify: edVerify, createPublicKey } = await import('node:crypto');
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const rawPub = new Uint8Array(publicKey.export({ format: 'der', type: 'spki' }).subarray(-32));
+  const verifyFn = (msg: Uint8Array, sig: Uint8Array, pub: Uint8Array) => {
+    const spki = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(pub)]);
+    return edVerify(null, Buffer.from(msg), createPublicKey({ key: spki, format: 'der', type: 'spki' }), Buffer.from(sig));
+  };
+
+  const payload = { v: 1 as const, plan: 'pro' as const, email: 'a@b.c', iat: 1700000000000 };
+  const sig = new Uint8Array(edSign(null, Buffer.from(JSON.stringify(payload), 'utf8'), privateKey));
+  const key = encodeLicense(payload, sig);
+  assert.ok(key.startsWith('LEXORA1.'));
+
+  const ok = await verifyLicenseKey(key, rawPub, verifyFn);
+  assert.equal(ok.email, 'a@b.c');
+
+  // tampered payload must fail
+  const parts = key.split('.');
+  const bad = [parts[0], b64urlEncode(new TextEncoder().encode(JSON.stringify({ ...payload, email: 'x@y.z' }))), parts[2]].join('.');
+  await assert.rejects(() => verifyLicenseKey(bad, rawPub, verifyFn), /签名无效/);
+
+  // expired key must fail
+  const payloadExp = { ...payload, exp: 1700000001000 };
+  const sigExp = new Uint8Array(edSign(null, Buffer.from(JSON.stringify(payloadExp), 'utf8'), privateKey));
+  await assert.rejects(
+    () => verifyLicenseKey(encodeLicense(payloadExp, sigExp), rawPub, verifyFn, 1800000000000),
+    /已过期/,
+  );
+});
+
+test('license: trial state machine and review-mode gating', () => {
+  const day = 86400_000;
+  const t0 = 1700000000000;
+  assert.equal(computeLicenseState({ verified: null }).tier, 'free');
+  const pro = computeLicenseState({ verified: { v: 1, plan: 'pro', email: 'a@b.c', iat: t0 } });
+  assert.ok(hasPro(pro));
+  const trial = computeLicenseState({ verified: null, trialStartedAt: t0, now: t0 + 3 * day });
+  assert.equal(trial.tier, 'trial');
+  assert.equal(trial.trialDaysLeft, 11);
+  const over = computeLicenseState({ verified: null, trialStartedAt: t0, now: t0 + 15 * day });
+  assert.equal(over.tier, 'free');
+  assert.ok(over.trialExpired);
+  assert.ok(!hasPro(over));
+  const withErr = computeLicenseState({ verified: null, keyError: 'bad' });
+  assert.equal(withErr.keyError, 'bad');
+  assert.ok(isProReviewMode('listening') && isProReviewMode('cloze-spell'));
+  assert.ok(!isProReviewMode('card') && !isProReviewMode('spelling'));
 });

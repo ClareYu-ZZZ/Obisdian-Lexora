@@ -1,9 +1,8 @@
 import type { App } from 'obsidian';
-import { setIcon } from 'obsidian';
+import { setIcon, Notice } from 'obsidian';
 import {
-  buildChoices, buildSession, pickExample,
-  type ReviewRating, type SessionItem, type WordCard,
-} from '@elp/core';
+  buildChoices, buildSession, isProReviewMode, pickExample,
+  type ReviewRating, type SessionItem, type WordCard } from '@elp/core';
 import type ElpPlugin from './main';
 import { lookupOnline } from './online-dict';
 import { pronounce } from './audio';
@@ -62,7 +61,13 @@ export class ReviewPanel {
 
   startSession(): void {
     const book = this.book();
-    this.queue = book ? buildSession(book, this.plugin.log) : [];
+    const pro = this.plugin.license.pro;
+    this.queue = book
+      ? buildSession(book, this.plugin.log, new Date(), pro ? undefined : (m) => !isProReviewMode(m))
+      : [];
+    if (!pro && book?.reviewConfig.modes.some((m) => isProReviewMode(m))) {
+      new Notice('高级复习模式属于 Lexora Pro，本次会话仅使用基础模式。', 5000);
+    }
     this.idx = 0;
     this.doneNew = 0;
     this.doneReview = 0;

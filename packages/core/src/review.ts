@@ -135,8 +135,14 @@ function pickMode(modes: ReviewMode[], card: WordCard): ReviewMode {
  * then new cards, both capped by the book's daily limits minus what the
  * log says was already done today.
  */
-export function buildSession(book: WordBook, log: ReviewLog, now = new Date()): SessionItem[] {
+export function buildSession(
+  book: WordBook,
+  log: ReviewLog,
+  now = new Date(),
+  modeFilter?: (m: ReviewMode) => boolean,
+): SessionItem[] {
   const cfg = book.reviewConfig;
+  const modes = modeFilter ? cfg.modes.filter(modeFilter) : cfg.modes;
   const done = log.today(book.id, now);
   const reviewBudget = Math.max(0, cfg.reviewsPerDay - done.review);
   const newBudget = Math.max(0, cfg.newPerDay - done.new);
@@ -152,8 +158,8 @@ export function buildSession(book: WordBook, log: ReviewLog, now = new Date()): 
     .slice(0, newBudget);
 
   const items: SessionItem[] = [
-    ...due.map((card) => ({ card, kind: 'review' as const, mode: pickMode(cfg.modes, card) })),
-    ...fresh.map((card) => ({ card, kind: 'new' as const, mode: pickMode(cfg.modes, card) })),
+    ...due.map((card) => ({ card, kind: 'review' as const, mode: pickMode(modes, card) })),
+    ...fresh.map((card) => ({ card, kind: 'new' as const, mode: pickMode(modes, card) })),
   ];
   return items;
 }

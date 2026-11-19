@@ -9,7 +9,7 @@ Lexora 是一个 Obsidian 英语学习插件：订阅（RSS / 播客 / YouTube /
 ## Install (BRAT beta channel)
 
 1. Install the **BRAT** community plugin in Obsidian.
-2. BRAT → *Add beta plugin* → enter `ClareYu-ZZZ/Obisdian-Lexora`.
+2. BRAT → *Add beta plugin* → enter `ClareYu-ZZZ/Obsidian-Lexora`.
 3. Enable **Lexora** in *Settings → Community plugins*.
 
 BRAT tracks GitHub Releases of this repo (pre-release tags such as `0.16.0-beta.1` are the beta channel) and updates automatically.

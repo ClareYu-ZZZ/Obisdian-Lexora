@@ -1,3 +1,4 @@
+// Docs deploy: Pages source must be set to "GitHub Actions" in repo settings (done once).
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({

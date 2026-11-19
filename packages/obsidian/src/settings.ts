@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Modal, Notice, PluginSettingTab, Setting, reque
 import { TextInputModal } from './ui';
 import type ElpPlugin from './main';
 import { fetchOpenaiTts } from './audio';
+import { TELEMETRY_ENDPOINT, checkForUpdate } from './telemetry';
 
 export interface ElpSettings {
   /** Vault-relative path to the dictionary csv (ECDICT format). */
@@ -53,6 +54,13 @@ export interface ElpSettings {
   trialStartedAt?: number;
   /** Monthly lesson-generation counter. */
   lessonUsage?: { month: string; used: number };
+  /** ---- 更新与统计 ---- */
+  updateCheckEnabled: boolean;
+  telemetryEnabled: boolean;
+  installId?: string;
+  lastUpdateCheckAt?: number;
+  lastPingAt?: number;
+  lastNotifiedVersion?: string;
 }
 
 export const DEFAULT_SETTINGS: ElpSettings = {
@@ -86,6 +94,8 @@ export const DEFAULT_SETTINGS: ElpSettings = {
   eudicAutoSync: false,
   vocabTests: [],
   licenseKey: '',
+  updateCheckEnabled: true,
+  telemetryEnabled: true,
 };
 
 export function mineLevelsOf(s: ElpSettings): string[] {
@@ -511,6 +521,30 @@ export class ElpSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.eudicAutoSync).onChange(async (v) => {
           this.plugin.settings.eudicAutoSync = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl).setName('更新与统计').setHeading();
+    new Setting(containerEl)
+      .setName('启动时检查更新')
+      .setDesc('每天最多查询一次 GitHub Releases；发现新版本弹一次提示。')
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.updateCheckEnabled).onChange(async (v) => {
+          this.plugin.settings.updateCheckEnabled = v;
+          await this.plugin.saveSettings();
+        }),
+      )
+      .addButton((b) =>
+        b.setButtonText('立即检查').onClick(() => void checkForUpdate(this.plugin, true)),
+      );
+    new Setting(containerEl)
+      .setName('匿名使用统计')
+      .setDesc('每周最多一个匿名 ping：随机安装 ID、版本、平台、档位与粗粒度计数。不含任何笔记内容、vault 信息或密钥。' +
+        (TELEMETRY_ENDPOINT ? '' : '（当前统计端点未启用，不会发送任何数据）'))
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.telemetryEnabled).onChange(async (v) => {
+          this.plugin.settings.telemetryEnabled = v;
           await this.plugin.saveSettings();
         }),
       );

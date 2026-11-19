@@ -56,7 +56,7 @@ Then in Obsidian: Lexora settings → companion worker → **Pair…** — enter
 
 ## Network use disclosure
 
-Lexora makes network requests only for the features you use, and never sends telemetry:
+Lexora makes network requests only for the features you use:
 
 - **Dictionary lookups** (free tier fallback): dictionaryapi.dev, dict.youdao.com
 - **Word pronunciation** (dictionary voice source): dict.youdao.com
@@ -64,6 +64,8 @@ Lexora makes network requests only for the features you use, and never sends tel
 - **Eudic sync** (opt-in, your own token): api.frdic.com
 - **Feeds / lessons**: the RSS/podcast/YouTube URLs you subscribe to (plus Invidious instances as a YouTube metadata fallback)
 - **Self-hosted worker** (opt-in): the URL you configure
+- **Update check** (default on, can be disabled): api.github.com releases endpoint, at most once a day, no identifiers sent
+- **Anonymous usage stats** (default on, can be disabled; currently dormant — no endpoint is configured): at most one weekly ping with a random install id, plugin version, platform, tier and coarse counters. Never any note content, vault names or keys. Receiver source: `tools/telemetry/worker.js`
 
 API keys and tokens are stored locally in the plugin's `data.json` and sent only to their own service.
 

@@ -1,4 +1,5 @@
 import { LicenseManager } from './license';
+import { checkForUpdate, sendTelemetryPing } from './telemetry';
 import { MarkdownView, Notice, Plugin, WorkspaceLeaf, addIcon } from 'obsidian';
 import type { EditorView } from '@codemirror/view';
 import {
@@ -49,6 +50,11 @@ export default class ElpPlugin extends Plugin {
     await this.loadSettings();
     this.license = new LicenseManager(this);
     void this.license.refresh();
+    // 延迟到启动稳定后再做更新检查与匿名统计（都可在设置关闭，且各自节流）
+    window.setTimeout(() => {
+      void checkForUpdate(this);
+      void sendTelemetryPing(this);
+    }, 5000);
     this.storage = new VaultStorage(this.app.vault);
     this.store = new BookStore(this.storage, booksFolder(this.settings));
     this.dict = new EcdictDictionary(this.storage, dictCacheFolder(this.settings));

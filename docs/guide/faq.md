@@ -30,5 +30,6 @@ v0.13.6 之前生成的教程没有段落区间信息，重新生成该教程即
 ## 数据与隐私
 
 - 所有学习数据（词本、复习记录、录音、教程）都是 vault 里的本地文件
-- 无遥测、无账号；API key / token 只存本机 `data.json`
+- 无账号；API key / token 只存本机 `data.json`
+- 版本检查（可关）只匿名请求 GitHub Releases；匿名使用统计（可关）每周最多一个 ping，只含随机安装 ID、版本、平台、档位与粗粒度计数，接收端代码在仓库 `tools/telemetry/` 公开可查
 - 网络请求仅发生在你使用对应功能时（详见仓库 README 的 Network use disclosure）

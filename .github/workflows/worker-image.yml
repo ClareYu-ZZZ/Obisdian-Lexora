@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -34,6 +34,8 @@ jobs:
 
       - name: Compute image tags
         id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE="ghcr.io/${OWNER}/elp-worker"
@@ -41,7 +43,16 @@ jobs:
             VERSION="${GITHUB_REF_NAME#worker-v}"
             TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
           else
-            TAGS="${IMAGE}:edge"
+            # services/worker/VERSION drives releases from main: when the tag
+            # worker-v<VERSION> does not exist yet, create it here and publish
+            # <VERSION> + latest (sessions pushing to main cannot push tags).
+            VERSION=$(cat services/worker/VERSION | tr -d '[:space:]')
+            if [ -n "$VERSION" ] && ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/worker-v${VERSION}" >/dev/null 2>&1; then
+              gh api "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/worker-v${VERSION}" -f sha="${GITHUB_SHA}"
+              TAGS="${IMAGE}:${VERSION},${IMAGE}:latest,${IMAGE}:edge"
+            else
+              TAGS="${IMAGE}:edge"
+            fi
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 

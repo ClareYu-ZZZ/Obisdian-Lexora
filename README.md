@@ -42,18 +42,17 @@ Copy `packages/obsidian/{main.js,manifest.json,styles.css}` into `<vault>/.obsid
 The optional self-hosted worker provides transcription (faster-whisper), TTS (Piper), media clipping and subtitle/YouTube endpoints.
 
 ```bash
-docker pull ghcr.io/clareyu-zzz/elp-worker:latest
-docker run -d --name elp-worker -p 8321:8321 --cpus=4 \
-  -e LEXORA_TOKEN=<your-token> -e LEXORA_WHISPER_THREADS=4 \
-  ghcr.io/clareyu-zzz/elp-worker:latest
+curl -fsSLO https://raw.githubusercontent.com/ClareYu-ZZZ/Obsidian-Lexora/main/services/worker/docker-compose.yml
+docker compose up -d
+docker compose logs | grep 配对码   # pairing code, valid 15 min
 ```
 
-Auth: loopback requests are unauthenticated; any non-loopback request requires `Authorization: Bearer $LEXORA_TOKEN` (auto-generated and printed on first start if unset).
+Then in Obsidian: Lexora settings → companion worker → **Pair…** — enter the host and the 6-digit code; the URL and token are filled in automatically. Auth: loopback requests are unauthenticated; any non-loopback request requires `Authorization: Bearer $LEXORA_TOKEN` (auto-generated and printed on first start if unset).
 
 ## Releasing
 
 - **Plugin**: tag the exact manifest version (no `v` prefix): `git tag 0.15.3 && git push origin 0.15.3`. CI builds and attaches `main.js` / `manifest.json` / `styles.css` to the GitHub Release. Tags containing `-` (e.g. `0.16.0-beta.1`) are marked pre-release (BRAT beta). Keep root `manifest.json`, `packages/obsidian/manifest.json` and `versions.json` in sync when bumping.
-- **Worker**: tag `worker-v<semver>` to publish `ghcr.io/clareyu-zzz/elp-worker:<semver>` + `latest`; pushes to `main` touching `services/worker/**` publish `:edge`.
+- **Worker**: bump `services/worker/VERSION` and push to main (CI creates the `worker-v<version>` tag and publishes `<version>` + `latest`), or tag `worker-v<semver>` to publish `ghcr.io/clareyu-zzz/elp-worker:<semver>` + `latest`; pushes to `main` touching `services/worker/**` publish `:edge`.
 
 ## Pricing model (open core)
 

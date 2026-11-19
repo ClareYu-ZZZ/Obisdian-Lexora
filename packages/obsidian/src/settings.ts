@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, FuzzySuggestModal, Modal, Notice, PluginSettingTab, Setting, requestUrl } from 'obsidian';
 import { TextInputModal } from './ui';
 import type ElpPlugin from './main';
 import { fetchOpenaiTts } from './audio';
@@ -340,6 +340,14 @@ export class ElpSettingTab extends PluginSettingTab {
             : '连接失败：检查地址 / token / 服务是否在跑');
         }),
       );
+    new Setting(containerEl)
+      .setName('配对')
+      .setDesc('免抄 token：启动 worker 后 15 分钟内，输入地址和日志里打印的 6 位配对码即可自动完成配置（docker compose logs | grep 配对码）。')
+      .addButton((b) =>
+        b.setButtonText('配对…').setCta().onClick(() => {
+          new WorkerPairModal(this.app, this.plugin, () => this.display()).open();
+        }),
+      );
 
     new Setting(containerEl)
       .setName('句子朗读引擎')
@@ -536,4 +544,65 @@ class EudicPickModal extends FuzzySuggestModal<{ id: string; name: string }> {
   getItems() { return this.cats; }
   getItemText(c: { id: string; name: string }): string { return c.name; }
   onChooseItem(c: { id: string; name: string }): void { this.onPick(c); }
+}
+
+
+/** 配对弹窗：地址 + 6 位配对码 → POST /v1/pair → 自动写入地址与 token。 */
+class WorkerPairModal extends Modal {
+  constructor(app: App, private plugin: ElpPlugin, private onDone: () => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: '配对 elp-worker' });
+    let url = this.plugin.settings.workerUrl || 'http://';
+    let code = '';
+    new Setting(contentEl)
+      .setName('服务地址')
+      .addText((t) => {
+        t.setPlaceholder('http://<nas>:8321').setValue(url).onChange((v) => (url = v.trim()));
+        t.inputEl.style.width = '220px';
+      });
+    new Setting(contentEl)
+      .setName('配对码')
+      .setDesc('worker 启动日志里打印的 6 位数字')
+      .addText((t) => t.setPlaceholder('123456').onChange((v) => (code = v.trim())));
+    new Setting(contentEl).addButton((b) =>
+      b.setButtonText('配对').setCta().onClick(async () => {
+        const base = url.replace(/\/+$/, '');
+        if (!/^https?:\/\//.test(base) || !/^\d{6}$/.test(code)) {
+          new Notice('请填写完整地址（含 http://）和 6 位配对码');
+          return;
+        }
+        try {
+          const res = await requestUrl({
+            url: `${base}/v1/pair`,
+            method: 'POST',
+            contentType: 'application/json',
+            body: JSON.stringify({ code }),
+            throw: false,
+          });
+          if (res.status !== 200 || !res.json?.token) {
+            const detail = res.json?.detail ?? `HTTP ${res.status}`;
+            new Notice(`配对失败：${detail}`);
+            return;
+          }
+          this.plugin.settings.workerUrl = base;
+          this.plugin.settings.workerToken = String(res.json.token);
+          await this.plugin.saveSettings();
+          const caps = await this.plugin.worker.capabilities();
+          new Notice(caps ? `配对成功：${caps.name} ✓` : '已保存 token，但能力检查未通过，请点「测试连接」排查');
+          this.close();
+          this.onDone();
+        } catch (e) {
+          new Notice(`配对失败：${(e as Error).message}`);
+        }
+      }),
+    );
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
 }

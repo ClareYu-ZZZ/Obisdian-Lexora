@@ -29,7 +29,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-API_VERSION = "1.0"
+API_VERSION = "1.1"
 FAKE = os.environ.get("LEXORA_FAKE") == "1"
 WHISPER_MODEL = os.environ.get("LEXORA_WHISPER_MODEL", "small")
 PIPER_VOICE = os.environ.get("LEXORA_PIPER_VOICE", "en_US-ryan-high")
@@ -39,6 +39,19 @@ WHISPER_THREADS = int(os.environ.get("LEXORA_WHISPER_THREADS", "4"))
 TOKEN = os.environ.get("LEXORA_TOKEN") or secrets.token_urlsafe(24)
 if not os.environ.get("LEXORA_TOKEN"):
     print(f"[elp-worker] generated token (set LEXORA_TOKEN to pin it): {TOKEN}", flush=True)
+
+# 配对：启动后一段时间内，持 6 位配对码可换取 token（替代手抄 token）。
+# 窗口过后端点关闭；重启容器即获得新配对码。LEXORA_PAIRING_WINDOW=0 可禁用。
+PAIR_WINDOW = int(os.environ.get("LEXORA_PAIRING_WINDOW", "900"))
+PAIR_CODE = f"{secrets.randbelow(1_000_000):06d}"
+PAIR_STARTED = time.time()
+PAIR_ATTEMPTS = 0
+if PAIR_WINDOW > 0:
+    print(
+        f"[elp-worker] 配对码: {PAIR_CODE}（{PAIR_WINDOW // 60} 分钟内有效）—— "
+        f"在 Lexora 设置 → 伴侣服务 → 配对 中输入地址和此码即可自动完成配置。",
+        flush=True,
+    )
 
 WORK_DIR = Path(os.environ.get("LEXORA_WORK_DIR", tempfile.gettempdir())) / "elp-worker"
 WORK_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,6 +68,20 @@ def require_auth(request: Request) -> None:
     header = request.headers.get("authorization", "")
     if header != f"Bearer {TOKEN}":
         raise HTTPException(status_code=401, detail="missing or invalid bearer token")
+
+
+@app.post("/v1/pair")
+def pair(body: dict) -> JSONResponse:
+    """用配对码换 token。无鉴权，但受时间窗与尝试次数限制。"""
+    global PAIR_ATTEMPTS
+    if PAIR_WINDOW <= 0 or time.time() - PAIR_STARTED > PAIR_WINDOW:
+        raise HTTPException(status_code=403, detail="配对窗口已关闭，重启 elp-worker 获取新配对码")
+    if PAIR_ATTEMPTS >= 5:
+        raise HTTPException(status_code=429, detail="尝试次数过多，重启 elp-worker 重试")
+    if str(body.get("code", "")).strip() != PAIR_CODE:
+        PAIR_ATTEMPTS += 1
+        raise HTTPException(status_code=401, detail="配对码不正确")
+    return JSONResponse({"token": TOKEN, "apiVersion": API_VERSION})
 
 
 # ---------------------------------------------------------------- jobs

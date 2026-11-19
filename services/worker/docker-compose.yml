@@ -1,0 +1,28 @@
+# Lexora elp-worker — one-command self-hosting.
+#
+#   docker compose up -d
+#   docker compose logs | grep 配对码     # 15 分钟内在 Lexora 设置里完成配对
+#
+# Updating:  docker compose pull && docker compose up -d
+services:
+  elp-worker:
+    image: ghcr.io/clareyu-zzz/elp-worker:latest
+    container_name: elp-worker
+    restart: unless-stopped
+    ports:
+      - "8321:8321"
+    cpus: 4
+    environment:
+      - LEXORA_WHISPER_THREADS=4
+      # 固定 token（可选；不设则自动生成并打印，配对流程会自动取用）
+      # - LEXORA_TOKEN=change-me
+      # 转写模型大小：tiny/base/small/medium（默认 small）
+      # - LEXORA_WHISPER_MODEL=small
+      # 禁用配对端点（0 = 关闭；默认 900 秒窗口）
+      # - LEXORA_PAIRING_WINDOW=900
+    volumes:
+      # faster-whisper 模型缓存持久化，避免每次重建重新下载
+      - elp-worker-cache:/root/.cache
+
+volumes:
+  elp-worker-cache:

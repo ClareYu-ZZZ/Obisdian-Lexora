@@ -54,6 +54,19 @@ Then in Obsidian: Lexora settings → companion worker → **Pair…** — enter
 - **Plugin**: tag the exact manifest version (no `v` prefix): `git tag 0.15.3 && git push origin 0.15.3`. CI builds and attaches `main.js` / `manifest.json` / `styles.css` to the GitHub Release. Tags containing `-` (e.g. `0.16.0-beta.1`) are marked pre-release (BRAT beta). Keep root `manifest.json`, `packages/obsidian/manifest.json` and `versions.json` in sync when bumping.
 - **Worker**: bump `services/worker/VERSION` and push to main (CI creates the `worker-v<version>` tag and publishes `<version>` + `latest`), or tag `worker-v<semver>` to publish `ghcr.io/clareyu-zzz/elp-worker:<semver>` + `latest`; pushes to `main` touching `services/worker/**` publish `:edge`.
 
+## Network use disclosure
+
+Lexora makes network requests only for the features you use, and never sends telemetry:
+
+- **Dictionary lookups** (free tier fallback): dictionaryapi.dev, dict.youdao.com
+- **Word pronunciation** (dictionary voice source): dict.youdao.com
+- **OpenAI TTS** (opt-in, your own API key): api.openai.com
+- **Eudic sync** (opt-in, your own token): api.frdic.com
+- **Feeds / lessons**: the RSS/podcast/YouTube URLs you subscribe to (plus Invidious instances as a YouTube metadata fallback)
+- **Self-hosted worker** (opt-in): the URL you configure
+
+API keys and tokens are stored locally in the plugin's `data.json` and sent only to their own service.
+
 ## Pricing model (open core)
 
 All code in this repository is MIT-licensed and the free tier works forever: subscriptions, lesson generation from articles and subtitles, word books, highlighting, hover cards, the bundled self-built dictionary, Eudic sync, and the four basic review modes.

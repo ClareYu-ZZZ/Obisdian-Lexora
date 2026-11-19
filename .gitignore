@@ -20,3 +20,5 @@ tools/dictgen/raw/
 tools/dictgen/out/
 tools/dictgen/.venv/
 licgen-keys/
+docs/.vitepress/dist/
+docs/.vitepress/cache/

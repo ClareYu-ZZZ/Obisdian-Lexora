@@ -9,5 +9,8 @@
   "scripts": {
     "build": "npm run build -w @elp/obsidian",
     "test": "npm run test -w @elp/core"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
   }
 }

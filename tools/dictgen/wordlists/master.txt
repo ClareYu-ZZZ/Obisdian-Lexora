@@ -2157,7 +2157,7 @@ cosset	ielts,gre
 costly	cet4,ky
 costume	cet6,ky,ielts,toefl,gre
 cosy	ky,ielts,gre
-cosycozy	gre
+cozy	cet6,gre,ky
 coterie	gre
 coterminous	gre
 cottage	ky
@@ -2202,7 +2202,6 @@ cower	gre
 cowhand	toefl
 coy	gre
 cozen	gre
-cozy	cet6,ky,gre
 crab	ky,toefl,gre
 crabbed	gre
 crack	cet4,ky,ielts,toefl,gre
@@ -4823,7 +4822,7 @@ ideology	cet6,ky,toefl,gre
 ideomotor	toefl
 idiom	cet6,ky,toefl,gre
 idiomatic	gre
-idiosyncracy	gre
+idiosyncrasy	gre
 idiosyncratic	gre
 idiot	cet6,ky
 idle	cet4,ky,toefl,gre
@@ -7386,7 +7385,6 @@ pledge	cet4,cet6,ky,ielts,gre
 plenary	gre
 plenitude	gre
 plentiful	cet4,ky
-plentitude	gre
 pleonastic	gre
 plethora	gre
 pliable	ielts,toefl,gre

@@ -14,3 +14,8 @@ deploy/
 data.json
 cookies.txt
 *.env
+
+# proprietary dictionary data (commercial asset) stays out of the public repo
+tools/dictgen/raw/
+tools/dictgen/out/
+tools/dictgen/.venv/

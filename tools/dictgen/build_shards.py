@@ -77,6 +77,8 @@ def word_in_example(lemma: str, en: str) -> bool:
     if len(lem) >= 3:
         stems.add(lem[: max(4, len(lem) - 2)])
     tokens = re.findall(r"[a-z'\-]+", en.lower())
+    if len(lem) < 3:
+        return lem in tokens
     return any(t.startswith(st) for t in tokens for st in stems if len(st) >= 3)
 
 

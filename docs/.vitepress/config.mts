@@ -17,6 +17,7 @@ export default defineConfig({
         items: [
           { text: '快速开始', link: '/guide/getting-started' },
           { text: '伴侣服务（worker）', link: '/guide/worker' },
+          { text: '云服务器部署（中国区）', link: '/guide/cloud' },
           { text: 'Lexora Pro 与订阅', link: '/guide/pro' },
           { text: '常见问题', link: '/guide/faq' },
         ],

@@ -335,7 +335,7 @@ export class ElpSettingTab extends PluginSettingTab {
       );
     new Setting(containerEl)
       .setName('访问 token')
-      .setDesc('服务启动时打印/LEXORA_TOKEN；局域网访问必填。')
+      .setDesc('服务启动时打印/LEXORA_TOKEN；局域网访问必填（配对可自动填写）。连接官方/托管 worker 时，这里直接填你的 Pro license key。')
       .addText((t) =>
         t.setValue(this.plugin.settings.workerToken).onChange(async (v) => {
           this.plugin.settings.workerToken = v.trim();

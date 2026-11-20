@@ -14,6 +14,7 @@ elp-worker — Lexora 的本地伴侣服务（自托管，开源）。
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
@@ -40,20 +41,28 @@ TOKEN = os.environ.get("LEXORA_TOKEN") or secrets.token_urlsafe(24)
 if not os.environ.get("LEXORA_TOKEN"):
     print(f"[elp-worker] generated token (set LEXORA_TOKEN to pin it): {TOKEN}", flush=True)
 
-# 共享模式：LEXORA_GUEST_TOKENS=tok1,tok2 为访客发放次级 token。
-# 访客：不可用 YouTube 端点（yt-dlp + 站长 cookies 属个人资产，也是商用红线），
-# 且按日限流。计数在内存、按 UTC 日重置；重启清零（beta 可接受）。
-GUEST_TOKENS = {t.strip() for t in os.environ.get("LEXORA_GUEST_TOKENS", "").split(",") if t.strip()}
-GUEST_DAILY_JOBS = int(os.environ.get("LEXORA_GUEST_DAILY_JOBS", "10"))
-GUEST_DAILY_TTS = int(os.environ.get("LEXORA_GUEST_DAILY_TTS", "300"))
-_GUEST_USE: dict = {}
-_GUEST_USE_LOCK = threading.Lock()
+# 托管/共享模式：直接验 Lexora Pro license key（与插件同一把 Ed25519 公钥，离线验签）。
+# LEXORA_ACCEPT_LICENSE_KEYS=1 开启；持有效 key 的用户可用转写/切片/TTS（按日限流），
+# YouTube 端点始终仅站长可用（yt-dlp + cookies 属个人资产，也是商用红线）。
+# 一本账：key 到期/吊销 → 功能与算力同时失效。
+ACCEPT_LICENSE_KEYS = os.environ.get("LEXORA_ACCEPT_LICENSE_KEYS", "0") == "1"
+LICENSE_PUBKEY_HEX = os.environ.get(
+    "LEXORA_LICENSE_PUBKEY",
+    "47b76ac85ae108a5afd0e9f0cc31357fbdf93b571b1e6815316c474ec051df42",
+)
+REVOKED_EMAILS = {e.strip().lower() for e in os.environ.get("LEXORA_REVOKED", "").split(",") if e.strip()}
+LICENSED_DAILY_JOBS = int(os.environ.get("LEXORA_LICENSED_DAILY_JOBS", "10"))
+LICENSED_DAILY_TTS = int(os.environ.get("LEXORA_LICENSED_DAILY_TTS", "300"))
+if ACCEPT_LICENSE_KEYS:
+    print("[elp-worker] 托管模式：接受 Lexora Pro license key 鉴权", flush=True)
+_USE: dict = {}
+_USE_LOCK = threading.Lock()
 
 
-def _guest_take(token: str, kind: str, limit: int) -> None:
+def _quota_take(identity: str, kind: str, limit: int) -> None:
     day = time.strftime("%Y-%m-%d", time.gmtime())
-    with _GUEST_USE_LOCK:
-        rec = _GUEST_USE.setdefault(token, {})
+    with _USE_LOCK:
+        rec = _USE.setdefault(identity, {})
         if rec.get("day") != day:
             rec.clear()
             rec["day"] = day
@@ -61,6 +70,31 @@ def _guest_take(token: str, kind: str, limit: int) -> None:
         if n >= limit:
             raise HTTPException(status_code=429, detail=f"今日{kind}配额已用完（{limit}/天），明天再来")
         rec[kind] = n + 1
+
+
+def _verify_license_key(key: str) -> str | None:
+    """验 Pro key：签名、plan、有效期、吊销名单。通过返回 email，否则 None。"""
+    try:
+        prefix, p64, s64 = key.split(".")
+        if prefix != "LEXORA1":
+            return None
+        pad = lambda x: x + "=" * (-len(x) % 4)  # noqa: E731
+        msg = base64.urlsafe_b64decode(pad(p64))
+        sig = base64.urlsafe_b64decode(pad(s64))
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(LICENSE_PUBKEY_HEX)).verify(sig, msg)
+        payload = json.loads(msg)
+        if payload.get("v") != 1 or payload.get("plan") != "pro":
+            return None
+        exp = payload.get("exp")
+        if not isinstance(exp, (int, float)) or time.time() * 1000 > exp:
+            return None
+        email = str(payload.get("email", "")).strip().lower()
+        if not email or email in REVOKED_EMAILS:
+            return None
+        return email
+    except Exception:  # noqa: BLE001 — 任何解析/验签失败都视为无效
+        return None
 
 # 配对：启动后一段时间内，持 6 位配对码可换取 token（替代手抄 token）。
 # 窗口过后端点关闭；重启容器即获得新配对码。LEXORA_PAIRING_WINDOW=0 可禁用。
@@ -91,9 +125,12 @@ def require_auth(request: Request) -> str:
     header = request.headers.get("authorization", "")
     if header == f"Bearer {TOKEN}":
         return "admin"
-    guest = header.removeprefix("Bearer ").strip()
-    if guest and guest in GUEST_TOKENS:
-        return guest
+    bearer = header.removeprefix("Bearer ").strip()
+    if ACCEPT_LICENSE_KEYS and bearer.startswith("LEXORA1."):
+        email = _verify_license_key(bearer)
+        if email:
+            return f"pro:{email}"
+        raise HTTPException(status_code=401, detail="license key 无效或已过期")
     raise HTTPException(status_code=401, detail="missing or invalid bearer token")
 
 
@@ -399,7 +436,7 @@ async def create_job(
     caller: str = Depends(require_auth),
 ) -> JSONResponse:
     if caller != "admin":
-        _guest_take(caller, "转写/切片", GUEST_DAILY_JOBS)
+        _quota_take(caller, "转写/切片", LICENSED_DAILY_JOBS)
     if type not in ("transcribe", "clip"):
         raise HTTPException(status_code=400, detail=f"unsupported job type: {type}")
     opts = json.loads(options or "{}")
@@ -472,7 +509,7 @@ class YtAudioRequest(BaseModel):
 def ytaudio(req: YtAudioRequest, caller: str = Depends(require_auth)) -> JSONResponse:
     """异步任务：下载 YouTube 音轨为 mp3（结果走 /v1/jobs/{id}/result）。"""
     if caller != "admin":
-        raise HTTPException(status_code=403, detail="共享服务未开放 YouTube 功能，请自托管 worker")
+        raise HTTPException(status_code=403, detail="托管 worker 未开放 YouTube 功能，请自托管")
     vid = req.video_id.strip()
     if not vid or len(vid) > 20:
         raise HTTPException(status_code=400, detail="bad video_id")
@@ -497,7 +534,7 @@ class SubtitleRequest(BaseModel):
 def subtitle(req: SubtitleRequest, caller: str = Depends(require_auth)) -> JSONResponse:
     """只拉 YouTube 字幕（不下载音视频）：人工字幕优先，ASR 自动字幕兜底。"""
     if caller != "admin":
-        raise HTTPException(status_code=403, detail="共享服务未开放 YouTube 功能，请自托管 worker")
+        raise HTTPException(status_code=403, detail="托管 worker 未开放 YouTube 功能，请自托管")
     vid = req.video_id.strip()
     if not vid or len(vid) > 20:
         raise HTTPException(status_code=400, detail="bad video_id")
@@ -586,7 +623,7 @@ def _pad_wav(data: bytes, lead: float = 0.12, tail: float = 0.18) -> bytes:
 @app.post("/v1/tts")
 def tts(req: TtsRequest, caller: str = Depends(require_auth)) -> Response:
     if caller != "admin":
-        _guest_take(caller, "TTS", GUEST_DAILY_TTS)
+        _quota_take(caller, "TTS", LICENSED_DAILY_TTS)
     text = req.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="empty text")
